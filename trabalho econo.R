@@ -40,7 +40,15 @@ nrow(base_final)
 #tiramos da base os na
 
 base_final <- filter(base_final, is.na(q14) | q14 != 1)
-base_final <- filter(base_final, !is.na(imc), !is.na(q69), !is.na(civil), !is.na(q88))
+nrow(base_final)
+sem_imc <- filter(base_final, is.na(imc))
+com_imc <- filter(base_final, !is.na(imc))
+mean(sem_imc$q6);                     mean(com_imc$q6)
+mean(sem_imc$q8_anos, na.rm = TRUE);  mean(com_imc$q8_anos, na.rm = TRUE)
+mean(sem_imc$q7 == 2);                mean(com_imc$q7 == 2)
+base_final <- filter(base_final, !is.na(imc))
+nrow(base_final)
+base_final <- filter(base_final, !is.na(q69), !is.na(civil), !is.na(q88))
 summary(base_final)
 
 nrow(base_final)
@@ -282,34 +290,6 @@ cor(base_modelo$faz_ex, base_modelo$horas_ex_seman)
 deltaMethod(m3, "faz_ex + 2.5*horas_ex_seman + 2.5^2*horas_ex_seman2", vcov. = V3)
 deltaMethod(m4, "faz_ex + 2.5*horas_ex_seman + 2.5^2*horas_ex_seman2", vcov. = V4)
 
-#causalidade reversa modelo 2 so em quem nao tem diagnostico, e so em quem tem
-m2_sem_diag <- update(m2, subset = (hart == 0 & diab == 0))
-m2_com_diag <- update(m2, subset = (hart == 1 | diab == 1))
-nobs(m2_sem_diag)
-nobs(m2_com_diag)
-
-deltaMethod(m2_sem_diag, "2.5*horas_ex_seman + 2.5^2*horas_ex_seman2", vcov. = vcovHC(m2_sem_diag, type = "HC1"))
-deltaMethod(m2_com_diag, "2.5*horas_ex_seman + 2.5^2*horas_ex_seman2", vcov. = vcovHC(m2_com_diag, type = "HC1"))
-
-#IMC medio e parcela que se exercita, sem e com diagnostico
-sem_diag <- base_modelo$hart == 0 & base_modelo$diab == 0
-mean(base_modelo$imc[sem_diag]);    mean(base_modelo$imc[!sem_diag])
-mean(base_modelo$faz_ex[sem_diag]); mean(base_modelo$faz_ex[!sem_diag])
-
-#dummy de diagnostico e as interacoes com as horas
-base_modelo$diag        <- ifelse(base_modelo$hart == 1 | base_modelo$diab == 1, 1, 0)
-base_modelo$horas_diag  <- base_modelo$horas_ex_seman  * base_modelo$diag
-base_modelo$horas2_diag <- base_modelo$horas_ex_seman2 * base_modelo$diag
-
-m2_int <- update(m2, . ~ . + diag + horas_diag + horas2_diag)
-Vi <- vcovHC(m2_int, type = "HC1")
-
-#diferenca entre os grupos para 2,5 horas
-deltaMethod(m2_int, "2.5*horas_diag + 2.5^2*horas2_diag", vcov. = Vi)
-
-#o formato da curva e o mesmo nos dois grupos?
-linearHypothesis(m2_int, c("horas_diag = 0", "horas2_diag = 0"), vcov. = Vi)
-
 grade <- seq(0, 14, by = 0.1)
 
 #pontos + parabola sem controles
@@ -324,7 +304,7 @@ png("figura_A.png", width = 800, height = 600)
 plot(jitter(base_modelo$horas_ex_seman), base_modelo$imc,
      pch = 16, cex = 0.5, col = rgb(0, 0, 0, 0.1),
      ylim = c(10, 50),
-     xlab = "Horas de exercício por semana", ylab = "IMC")
+     xlab = "Horas de atividade física por semana", ylab = "IMC")
 simples <- lm(imc ~ horas_ex_seman + horas_ex_seman2, data = base_modelo)
 lines(grade, predict(simples, newdata = data.frame(horas_ex_seman = grade, horas_ex_seman2 = grade^2)),
       col = "red", lwd = 2)
@@ -362,13 +342,13 @@ options(modelsummary_format_numeric_latex = "plain")
 
 modelsummary(modelos,
              vcov     = "HC1",
-             coef_map = c("horas_ex_seman"  = "Horas por semana",
-                          "horas_ex_seman2" = "Horas por semana²",
-                          "faz_ex"          = "Pratica exercício (dummy)"),
+             coef_map = c("horas_ex_seman"  = "Horas por semana (H)",
+                          "horas_ex_seman2" = "Horas por semana ao quadrado (H²)",
+                          "faz_ex"          = "Pratica atividade física (P)"),
              gof_map  = NA,
              add_rows = rodape,
              stars    = c("*" = 0.10, "**" = 0.05, "***" = 0.01),
-             title    = "Exercício no lazer e IMC",
+             title    = "Atividade física no lazer e IMC: modelos 1 a 4",
              notes    = c("Variável dependente: IMC. Estimação por MQO.",
                           "Erros-padrão robustos (HC1) entre parênteses.",
                           "Controles: idade, idade ao quadrado, sexo, anos de estudo,",
@@ -381,9 +361,7 @@ modelsummary(modelos,
 #tabela 2: robustez do modelo 2
 modelos2 <- list("Principal"       = m2,
                  "Sem plano"       = m2_sem_plano,
-                 "Sem IMC > 60"    = m2_sem_extremos,
-                 "Sem diag."       = m2_sem_diag,
-                 "Com diag."       = m2_com_diag)
+                 "Sem IMC > 60"    = m2_sem_extremos)
 
 #diferenca de IMC entre 2,5 h e zero em todos os modelos de uma vez
 dif <- sapply(modelos2, function(m) {
@@ -402,14 +380,12 @@ rodape2 <- data.frame(
   "Principal"       = c(nobs(m2),              formatC(summary(m2)$adj.r.squared,              format = "f", digits = 3)),
   "Sem plano"       = c(nobs(m2_sem_plano),    formatC(summary(m2_sem_plano)$adj.r.squared,    format = "f", digits = 3)),
   "Sem IMC > 60"    = c(nobs(m2_sem_extremos), formatC(summary(m2_sem_extremos)$adj.r.squared, format = "f", digits = 3)),
-  "Sem diag."       = c(nobs(m2_sem_diag),     formatC(summary(m2_sem_diag)$adj.r.squared,     format = "f", digits = 3)),
-  "Com diag."       = c(nobs(m2_com_diag),     formatC(summary(m2_com_diag)$adj.r.squared,     format = "f", digits = 3)),
   check.names = FALSE)
 
 modelsummary(modelos2,
              vcov     = "HC1",
-             coef_map = c("horas_ex_seman"  = "Horas por semana",
-                          "horas_ex_seman2" = "Horas por semana²"),
+             coef_map = c("horas_ex_seman"  = "Horas por semana (H)",
+                          "horas_ex_seman2" = "Horas por semana ao quadrado (H²)"),
              gof_map  = NA,
              add_rows = rbind(linha_dif, rodape2),
              stars    = c("*" = 0.10, "**" = 0.05, "***" = 0.01),
@@ -419,8 +395,6 @@ modelsummary(modelos2,
                           "Todas as colunas têm os controles, os hábitos e os efeitos fixos",
                           "de cidade do modelo 2. Sem plano: sem a dummy de plano de saúde.",
                           "Sem IMC > 60: retira as 20 pessoas com IMC acima de 60.",
-                          "Sem diag.: só quem não tem hipertensão nem diabetes.",
-                          "Com diag.: só quem tem hipertensão ou diabetes.",
                           "A linha da diferença não leva estrelas; a significância",
                           "é lida pelo erro-padrão."),
              output   = "tabela2.tex")
